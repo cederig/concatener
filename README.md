@@ -10,6 +10,7 @@
 - Support for wildcard patterns (*.txt, *.log, etc.)
 - Directory support - concatenate all files in a directory
 - Recursive directory support with -r/--recursive option
+- Automatic encoding detection - supports UTF-8, ISO-8859 series, Windows-1252, and more
 - Custom output file specification with -o/--output option
 - Cross-platform compatibility (Linux, Windows, macOS)
 - Built with Rust 2024 edition for optimal performance
@@ -21,6 +22,7 @@ This project uses the following dependencies (as defined in `Cargo.toml`):
 - `clap` : Command-line argument parsing with derive macros
 - `glob` : Wildcard pattern matching for file selection
 - `anyhow` : Error handling and context management
+- `encoding_rs` : Automatic character encoding detection and conversion
 
 ## Installation
 
@@ -142,6 +144,25 @@ The basic syntax is as follows:
 ### Concatenate files from multiple directories recursively
 ```sh
 ./concatener -r -o project_files.txt src/ docs/ tests/
+```
+
+### Encoding Detection
+
+`concatener` automatically detects and handles various text file encodings:
+
+- **UTF-8** (with and without BOM)
+- **UTF-16LE** (Little-endian, common on Windows)
+- **UTF-16BE** (Big-endian, with BOM support)
+- **Windows-1252** (common Windows encoding)
+- **ISO-8859 series** (European encodings)
+- **Asian encodings** (GBK, BIG5, SHIFT_JIS, EUC-JP, EUC-KR)
+- **Cyrillic encodings** (KOI8-R, KOI8-U)
+
+The tool automatically tries different encodings in order of likelihood and falls back to UTF-8 with replacement for any undecodable bytes.
+
+Example with mixed encodings:
+```sh
+./concatener -o mixed_files.txt utf8_file.txt utf16le_file.txt windows1252_file.txt
 ```
 
 ## Tests

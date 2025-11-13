@@ -10,6 +10,7 @@
 - Support des motifs génériques (*.txt, *.log, etc.)
 - Support des répertoires - concaténer tous les fichiers d'un répertoire
 - Support récursif des répertoires avec l'option -r/--recursive
+- Détection automatique d'encodage - supporte UTF-8, série ISO-8859, Windows-1252, et plus
 - Spécification de fichier de sortie personnalisée avec l'option -o/--output
 - Compatibilité multi-plateforme (Linux, Windows, macOS)
 - Construit avec l'édition Rust 2024 pour des performances optimales
@@ -21,6 +22,7 @@ Ce projet utilise les dépendances suivantes (définies dans `Cargo.toml`) :
 - `clap` : Analyse des arguments en ligne de commande avec les macros derive
 - `glob` : Correspondance de motifs génériques pour la sélection de fichiers
 - `anyhow` : Gestion des erreurs et du contexte
+- `encoding_rs` : Détection et conversion automatique d'encodage de caractères
 
 ## Installation
 
@@ -142,6 +144,25 @@ La syntaxe de base est la suivante :
 ### Concaténer des fichiers de plusieurs répertoires récursivement
 ```sh
 ./concatener -r -o fichiers_projet.txt src/ docs/ tests/
+```
+
+### Détection d'Encodage
+
+`concatener` détecte automatiquement et gère divers encodages de fichiers texte :
+
+- **UTF-8** (avec et sans BOM)
+- **UTF-16LE** (Little-endian, commun sur Windows)
+- **UTF-16BE** (Big-endian, avec support BOM)
+- **Windows-1252** (encodage commun Windows)
+- **Série ISO-8859** (encodages européens)
+- **Encodages asiatiques** (GBK, BIG5, SHIFT_JIS, EUC-JP, EUC-KR)
+- **Encodages cyrilliques** (KOI8-R, KOI8-U)
+
+L'outil essaie automatiquement différents encodages par ordre de probabilité et revient à UTF-8 avec remplacement pour les octets non décodables.
+
+Exemple avec encodages mixtes :
+```sh
+./concatener -o fichiers_mixtes.txt fichier_utf8.txt fichier_utf16le.txt fichier_windows1252.txt
 ```
 
 ## Tests

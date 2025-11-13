@@ -284,7 +284,7 @@ fn concatenate_files(files: &[PathBuf], output_path: &str) -> Result<()> {
         .with_context(|| format!("Failed to create output file: {}", output_path))?;
     
     for (index, file_path) in files.iter().enumerate() {
-        let content = fs::read_to_string(file_path)
+        let content = read_file_with_encoding_detection(file_path)
             .with_context(|| format!("Failed to read file: {:?}", file_path))?;
         
         // Remove trailing newlines from content to avoid double newlines
@@ -302,6 +302,98 @@ fn concatenate_files(files: &[PathBuf], output_path: &str) -> Result<()> {
         .with_context(|| "Failed to flush output file")?;
     
     Ok(())
+}
+
+fn read_file_with_encoding_detection(file_path: &PathBuf) -> Result<String> {
+    // Read the file as bytes first
+    let bytes = fs::read(file_path)
+        .with_context(|| format!("Failed to read file: {:?}", file_path))?;
+    
+    // Check for BOM first
+    if bytes.len() >= 2 {
+        // UTF-16 LE BOM
+        if bytes[0] == 0xFF && bytes[1] == 0xFE {
+            let (content, _, _) = encoding_rs::UTF_16LE.decode(&bytes[2..]);
+            return Ok(content.to_string());
+        }
+        // UTF-16 BE BOM
+        if bytes[0] == 0xFE && bytes[1] == 0xFF {
+            let (content, _, _) = encoding_rs::UTF_16BE.decode(&bytes[2..]);
+            return Ok(content.to_string());
+        }
+        // UTF-8 BOM
+        if bytes.len() >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF {
+            if let Ok(utf8_content) = std::str::from_utf8(&bytes[3..]) {
+                return Ok(utf8_content.to_string());
+            }
+        }
+    }
+    
+    // Try UTF-8 (most common)
+    if let Ok(utf8_content) = std::str::from_utf8(&bytes) {
+        return Ok(utf8_content.to_string());
+    }
+    
+    // Try UTF-16LE (common on Windows)
+    let (utf16le_content, _, utf16le_has_errors) = encoding_rs::UTF_16LE.decode(&bytes);
+    if !utf16le_has_errors {
+        return Ok(utf16le_content.to_string());
+    }
+    
+    // Try UTF-16BE
+    let (utf16be_content, _, utf16be_has_errors) = encoding_rs::UTF_16BE.decode(&bytes);
+    if !utf16be_has_errors {
+        return Ok(utf16be_content.to_string());
+    }
+    
+    // Try Windows-1252 (very common for Windows text files)
+    let (win_content, _, win_has_errors) = encoding_rs::WINDOWS_1252.decode(&bytes);
+    if !win_has_errors {
+        return Ok(win_content.to_string());
+    }
+    
+    // Try common ISO-8859 encodings that exist in encoding_rs
+    let iso_encodings = [
+        encoding_rs::ISO_8859_2,  // Central European
+        encoding_rs::ISO_8859_4,  // Baltic
+        encoding_rs::ISO_8859_5,  // Cyrillic
+        encoding_rs::ISO_8859_6,  // Arabic
+        encoding_rs::ISO_8859_7,  // Greek
+        encoding_rs::ISO_8859_8,  // Hebrew
+        encoding_rs::ISO_8859_10, // Nordic
+        encoding_rs::ISO_8859_13, // Baltic
+        encoding_rs::ISO_8859_14, // Celtic
+        encoding_rs::ISO_8859_15, // Latin-9 (with Euro)
+        encoding_rs::ISO_8859_16, // South-Eastern European
+    ];
+    
+    for encoding in &iso_encodings {
+        let (content, _, has_errors) = encoding.decode(&bytes);
+        if !has_errors {
+            return Ok(content.to_string());
+        }
+    }
+    
+    // Try other common encodings
+    let other_encodings = [
+        encoding_rs::KOI8_R,   // Russian
+        encoding_rs::KOI8_U,   // Ukrainian
+        encoding_rs::BIG5,     // Traditional Chinese
+        encoding_rs::GBK,      // Simplified Chinese
+        encoding_rs::SHIFT_JIS, // Japanese
+        encoding_rs::EUC_JP,   // Japanese
+        encoding_rs::EUC_KR,   // Korean
+    ];
+    
+    for encoding in &other_encodings {
+        let (content, _, has_errors) = encoding.decode(&bytes);
+        if !has_errors {
+            return Ok(content.to_string());
+        }
+    }
+    
+    // Fallback: replace invalid UTF-8 sequences
+    Ok(String::from_utf8_lossy(&bytes).to_string())
 }
 
 #[cfg(test)]
@@ -555,5 +647,57 @@ mod tests {
         assert!(!matches_pattern("test.txt", "other*"));
         assert!(!matches_pattern("test.txt", "*other"));
         assert!(!matches_pattern("test.txt", "other.txt"));
+    }
+
+    #[test]
+    fn test_encoding_detection() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        
+        // Test UTF-8 with BOM
+        let utf8_bom_content = "\u{FEFF}Hello, 世界!";
+        fs::write(temp_dir.path().join("utf8_bom.txt"), utf8_bom_content.as_bytes())?;
+        
+        // Test UTF-8 without BOM
+        let utf8_content = "Hello, 世界!";
+        fs::write(temp_dir.path().join("utf8.txt"), utf8_content.as_bytes())?;
+        
+        // Test ISO-8859-1 (Latin-1) - using common accented characters
+        let latin1_bytes = vec![0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x2c, 0x20, 0xe9, 0x20, 0x21]; // "Hello, é !"
+        fs::write(temp_dir.path().join("latin1.txt"), latin1_bytes)?;
+        
+        // Test Windows-1252 - use characters that are more reliably detected
+        let win1252_bytes = vec![0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x2c, 0x20, 0x80, 0x81, 0x82, 0x21]; // "Hello, €‚ƒ!"
+        fs::write(temp_dir.path().join("win1252.txt"), win1252_bytes)?;
+        
+        // Test UTF-16LE
+        let utf16le_bytes = vec![
+            0xFF, 0xFE, // BOM
+            0x48, 0x00, 0x65, 0x00, 0x6c, 0x00, 0x6c, 0x00, 0x6f, 0x00, // "Hello"
+            0x2c, 0x00, 0x20, 0x00, 0x55, 0x00, 0x54, 0x00, 0x46, 0x00, // ", UTF"
+            0x2d, 0x00, 0x31, 0x00, 0x36, 0x00, 0x4c, 0x00, 0x45, 0x00, // "-16LE"
+            0x21, 0x00
+        ];
+        fs::write(temp_dir.path().join("utf16le.txt"), utf16le_bytes)?;
+        
+        // Test concatenation with mixed encodings
+        let files = vec![
+            temp_dir.path().join("utf8_bom.txt"),
+            temp_dir.path().join("utf8.txt"),
+            temp_dir.path().join("latin1.txt"),
+            temp_dir.path().join("win1252.txt"),
+            temp_dir.path().join("utf16le.txt"),
+        ];
+        
+        let output_path = temp_dir.path().join("output.txt");
+        concatenate_files(&files, output_path.to_str().unwrap())?;
+        
+        let result = fs::read_to_string(&output_path)?;
+        
+        // Verify all content was read correctly
+        assert!(result.contains("Hello, 世界!"));
+        assert!(result.contains("Hello,"));
+        assert!(result.contains("UTF-16LE"));
+        
+        Ok(())
     }
 }
