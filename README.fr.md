@@ -11,6 +11,9 @@
 - Support des répertoires - concaténer tous les fichiers d'un répertoire
 - Support récursif des répertoires avec l'option -r/--recursive
 - Détection automatique d'encodage - supporte UTF-8, série ISO-8859, Windows-1252, et plus
+- **Affichage du temps de traitement - affiche la durée d'exécution pour le monitoring des performances
+- Barre de progression - indicateur visuel de progression pour le traitement de multiples fichiers
+- Indicateur de chargement - affiche la progression de découverte des fichiers avec compteur en temps réel
 - Spécification de fichier de sortie personnalisée avec l'option -o/--output
 - Compatibilité multi-plateforme (Linux, Windows, macOS)
 - Construit avec l'édition Rust 2024 pour des performances optimales
@@ -23,6 +26,7 @@ Ce projet utilise les dépendances suivantes (définies dans `Cargo.toml`) :
 - `glob` : Correspondance de motifs génériques pour la sélection de fichiers
 - `anyhow` : Gestion des erreurs et du contexte
 - `encoding_rs` : Détection et conversion automatique d'encodage de caractères
+- `indicatif` : Barre de progression et formatage console
 
 ## Installation
 
@@ -145,6 +149,41 @@ La syntaxe de base est la suivante :
 ```sh
 ./concatener -r -o fichiers_projet.txt src/ docs/ tests/
 ```
+
+**Exemple de sortie :**
+```
+⠙ Resolving files... (42 found)
+Found 42 files to process
+⠋ [00:00:03] [##########>-----------------------] 15/42 (1s) Processing file15.txt
+Successfully concatenated 42 files to: fichiers_projet.txt
+Processing time: 1.23 s
+```
+
+### Indicateur de Chargement
+
+Avant que le traitement ne commence, `concatener` affiche un indicateur de chargement qui montre :
+
+- **Animation spinner** pour indiquer que le programme travaille
+- **Progression de découverte des fichiers** avec compteur en temps réel
+- **Nombre final** de fichiers trouvés
+
+Ceci est particulièrement utile pour :
+- **Opérations récursives** qui scannent de nombreux répertoires
+- **Motifs génériques** qui correspondent à beaucoup de fichiers
+- **Structures de répertoires volumineuses** avec des milliers de fichiers
+
+### Barre de Progression
+
+Lors du traitement de 4 fichiers ou plus, `concatener` affiche une barre de progression montrant :
+
+- **Progression visuelle** avec une barre colorée
+- **Fichier en cours de traitement**
+- **Fichiers traités** (actuel/total)
+- **Temps écoulé** et temps restant estimé (ETA)
+
+La barre de progression n'apparaît que pour les opérations groupées pour éviter d'encombrer les petites opérations :
+- **1-3 fichiers** : Pas de barre de progression (opérations instantanées)
+- **4+ fichiers** : Barre de progression affichée
 
 ### Détection d'Encodage
 

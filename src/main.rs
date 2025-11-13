@@ -3,8 +3,11 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
+use indicatif::{ProgressBar, ProgressStyle};
 
 fn main() -> Result<()> {
+    let start_time = std::time::Instant::now();
+    
     let matches = Command::new("concatener")
         .version("0.1.0")
         .about("A fast command-line tool for concatenating multiple files")
@@ -35,13 +38,33 @@ fn main() -> Result<()> {
     let inputs: Vec<&String> = matches.get_many::<String>("inputs").unwrap().collect();
     let recursive = matches.get_flag("recursive");
 
+    // Show loading indicator while resolving files
+    let loading = ProgressBar::new_spinner();
+    loading.set_style(
+        ProgressStyle::default_spinner()
+            .template("{spinner:.green} {msg}")
+            .unwrap()
+    );
+    loading.set_message("Resolving files...");
+    loading.enable_steady_tick(std::time::Duration::from_millis(100));
+
     let mut all_files = Vec::new();
     
     for input in inputs {
         let files = resolve_input_files(input, recursive)
             .with_context(|| format!("Failed to resolve input: {}", input))?;
         all_files.extend(files);
+        
+        // Update loading message with current count
+        loading.set_message(format!("Resolving files... ({} found)", all_files.len()));
     }
+    
+    // Finish loading indicator and ensure it's properly cleaned up
+    loading.finish_and_clear();
+    println!("Found {} files to process", all_files.len());
+    
+    // Force flush all output
+    std::io::Write::flush(&mut std::io::stdout())?;
 
     if all_files.is_empty() {
         eprintln!("Warning: No input files found to concatenate");
@@ -54,7 +77,22 @@ fn main() -> Result<()> {
     concatenate_files(&all_files, output_path)
         .with_context(|| format!("Failed to concatenate files to: {}", output_path))?;
 
+    let duration = start_time.elapsed();
     println!("Successfully concatenated {} files to: {}", all_files.len(), output_path);
+    
+    // Display processing time in a human-readable format
+    if duration.as_millis() < 1000 {
+        println!("Processing time: {} ms", duration.as_millis());
+    } else if duration.as_secs() < 60 {
+        println!("Processing time: {:.2} s", duration.as_secs_f64());
+    } else {
+        let minutes = duration.as_secs() / 60;
+        let seconds = duration.as_secs() % 60;
+        println!("Processing time: {}m {}s", minutes, seconds);
+    }
+    
+    // Ensure all output is flushed before exiting
+    std::io::Write::flush(&mut std::io::stdout())?;
     Ok(())
 }
 
@@ -305,7 +343,37 @@ fn concatenate_files(files: &[PathBuf], output_path: &str) -> Result<()> {
     let mut output = fs::File::create(output_path)
         .with_context(|| format!("Failed to create output file: {}", output_path))?;
     
+    // Create progress bar if we have enough files to make it worthwhile
+    let progress = if files.len() > 3 {
+        let pb = ProgressBar::new(files.len() as u64);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta}) {msg}")
+                .unwrap()
+                .progress_chars("#>-")
+        );
+        pb.set_message("Starting...");
+        // Force immediate display
+        pb.tick();
+        // Ensure the progress bar is drawn before starting processing
+        std::io::Write::flush(&mut std::io::stdout()).ok();
+        Some(pb)
+    } else {
+        None
+    };
+    
     for (index, file_path) in files.iter().enumerate() {
+        // Update progress bar
+        if let Some(ref pb) = progress {
+            let file_name = file_path.file_name()
+                .unwrap_or_default()
+                .to_string_lossy();
+            pb.set_message(format!("Processing {}", file_name));
+            pb.inc(1);
+            // Force immediate refresh
+            pb.tick();
+        }
+        
         let content = read_file_with_encoding_detection(file_path)
             .with_context(|| format!("Failed to read file: {:?}", file_path))?;
         
@@ -318,6 +386,11 @@ fn concatenate_files(files: &[PathBuf], output_path: &str) -> Result<()> {
         if index < files.len() - 1 {
             writeln!(output)?;
         }
+    }
+    
+    // Finish progress bar and ensure it's properly cleaned up
+    if let Some(pb) = progress {
+        pb.finish_and_clear();
     }
     
     output.flush()

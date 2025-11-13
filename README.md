@@ -11,6 +11,9 @@
 - Directory support - concatenate all files in a directory
 - Recursive directory support with -r/--recursive option
 - Automatic encoding detection - supports UTF-8, ISO-8859 series, Windows-1252, and more
+- Processing time display - shows execution time for performance monitoring
+- Progress bar - visual progress indicator for processing multiple files
+- Loading indicator - shows file discovery progress with real-time count
 - Custom output file specification with -o/--output option
 - Cross-platform compatibility (Linux, Windows, macOS)
 - Built with Rust 2024 edition for optimal performance
@@ -23,6 +26,7 @@ This project uses the following dependencies (as defined in `Cargo.toml`):
 - `glob` : Wildcard pattern matching for file selection
 - `anyhow` : Error handling and context management
 - `encoding_rs` : Automatic character encoding detection and conversion
+- `indicatif` : Progress bar and console formatting
 
 ## Installation
 
@@ -145,6 +149,41 @@ The basic syntax is as follows:
 ```sh
 ./concatener -r -o project_files.txt src/ docs/ tests/
 ```
+
+**Output example:**
+```
+⠙ Resolving files... (42 found)
+Found 42 files to process
+⠋ [00:00:03] [##########>-----------------------] 15/42 (1s) Processing file15.txt
+Successfully concatenated 42 files to: project_files.txt
+Processing time: 1.23 s
+```
+
+### Loading Indicator
+
+Before processing begins, `concatener` displays a loading indicator that shows:
+
+- **Spinner animation** to indicate the program is working
+- **File discovery progress** with real-time count
+- **Final count** of files found
+
+This is especially useful for:
+- **Recursive operations** that scan many directories
+- **Wildcard patterns** that match many files
+- **Large directory structures** with thousands of files
+
+### Progress Bar
+
+When processing 4 or more files, `concatener` displays a progress bar showing:
+
+- **Visual progress** with a colored bar
+- **Current file being processed**
+- **Files processed** (current/total)
+- **Elapsed time** and estimated time remaining (ETA)
+
+The progress bar only appears for batch operations to avoid cluttering small operations:
+- **1-3 files**: No progress bar (instant operations)
+- **4+ files**: Progress bar displayed
 
 ### Encoding Detection
 
